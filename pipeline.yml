@@ -2,9 +2,9 @@ resources:
 - name: app-sources
   type: git
   source:
-    uri: https://github.com/smichard/CloudFoundryDemo
+    uri: https://github.com/smichard/CloudFoundryDemoDocker
     branch: master
-    
+       
 - name: staging-CloudFoundry
   type: cf
   source:
