@@ -4,7 +4,14 @@ resources:
   source:
     uri: https://github.com/smichard/CloudFoundryDemoDocker
     branch: master
-       
+    
+- name: docker-image-agency
+  type: docker-image
+  source:
+    repository: smichard/agencydemo
+    username: {{dockerhub-username}}
+    password: {{dockerhub-password}}
+    
 - name: staging-CloudFoundry
   type: cf
   source:
@@ -16,11 +23,21 @@ resources:
     skip_cert_check: false
 
 jobs:
-- name: deploy-website
+- name: build-docker-image
+  public: true
   serial: true
   plan:
   - get: app-sources
     trigger: true
-  - put: staging-CloudFoundry
+  - put: docker-image-agency
     params:
+        build: app-sources
+
+- name: deploy-app
+  plan:
+    - get: docker-image-agency
+      trigger: true
+      passed: [build-docker-image]
+    - put: staging-CloudFoundry
+      params:
         manifest: app-sources/manifest.yml
