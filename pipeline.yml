@@ -129,7 +129,7 @@ jobs:
         put: tweet
         params:
           media:
-          - app-sources/concourse_logo.jpg
+          - app-sources/logo.jpg
           status: >
             This is the first tweet with a picture (build ${BUILD_ID})
             from my custom @concourseci resource!
