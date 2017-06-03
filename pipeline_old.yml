@@ -1,0 +1,133 @@
+resource_types:
+- name: slack-notification
+  type: docker-image
+  source:
+    repository: cfcommunity/slack-notification-resource
+    tag: latest
+    
+- name: twitter
+  type: docker-image
+  source:
+    repository: ecsteam/twitter-concourse-resource
+
+resources:
+- name: app-sources
+  type: git
+  source:
+    uri: https://github.com/smichard/CloudFoundryDemoDocker
+    branch: master
+    
+- name: docker-image-agency
+  type: docker-image
+  source:
+    repository: smichard/agencydemo
+    username: {{dockerhub_username}}
+    password: {{dockerhub_password}}
+
+- name: ECS-backup
+  type: s3
+  source:
+    bucket: ecsbackup
+    versioned_file: agencycontainer
+    endpoint: {{ecs_endpoint}}
+    access_key_id: {{ecs_access_key}}
+    secret_access_key: {{ecs_access_secret}}
+    
+- name: staging-CloudFoundry
+  type: cf
+  source:
+    api: {{pws_api}}
+    username: {{pws_user}}
+    password: {{pws_password}}
+    organization: {{pws_org}}
+    space: {{pws_space}}
+    skip_cert_check: false
+
+- name: slack-message
+  type: slack-notification
+  source:
+    url: {{slack_url}}
+
+- name: tweet
+  type: twitter
+  source:
+    consumer_key: {{twitter_consumer_key}}
+    consumer_secret: {{twitter_consumer_secret}}
+    access_token: {{twitter_access_token}}
+    access_token_secret: {{twitter_access_token_secret}}
+    
+jobs:
+- name: build-docker-image
+  public: true
+  serial: true
+  plan:
+  - get: app-sources
+    trigger: true
+  - put: docker-image-agency
+    params:
+        build: app-sources
+    on_success:
+      put: slack-message
+      params:
+        channel: '#general'
+        text: |
+          The build $BUILD_JOB_NAME with build ID $BUILD_ID for pipeline $BUILD_PIPELINE_NAME completed succesfully. Check it out at:
+          http://127.0.0.1:8080/builds/$BUILD_ID
+    on_failure:
+      put: slack-message
+      params:
+        channel: '#general'
+        text: |
+          The build $BUILD_JOB_NAME with build ID $BUILD_ID for pipeline $BUILD_PIPELINE_NAME failed. Check it out at:
+          http://127.0.0.1:8080/builds/$BUILD_ID
+          
+- name: push-image-ECS 
+  plan:
+  - get: docker-image-agency
+    trigger: true
+    passed: [build-docker-image]   
+  - put: ECS-backup
+    params:
+      file: agencycontainer
+    on_success:
+      put: slack-message
+      params:
+        channel: '#general'
+        text: |
+          The build $BUILD_JOB_NAME with build ID $BUILD_ID for pipeline $BUILD_PIPELINE_NAME completed succesfully. Check it out at:
+          http://127.0.0.1:8080/builds/$BUILD_ID
+    on_failure:
+      put: slack-message
+      params:
+        channel: '#general'
+        text: |
+          The build $BUILD_JOB_NAME with build ID $BUILD_ID for pipeline $BUILD_PIPELINE_NAME failed. Check it out at:
+          http://127.0.0.1:8080/builds/$BUILD_ID
+
+- name: deploy-app
+  plan:
+    - get: docker-image-agency
+      trigger: true
+      passed: [build-docker-image]
+    - put: staging-CloudFoundry
+      params:
+        manifest: app-sources/manifest.yml
+      on_success:
+        put: slack-message
+        params:
+          channel: '#general'
+          text: |
+            The build $BUILD_JOB_NAME with build ID $BUILD_ID for pipeline $BUILD_PIPELINE_NAME completed succesfully. Check it out at:
+            http://127.0.0.1:8080/builds/$BUILD_ID
+      on_failure:
+        put: slack-message
+        params:
+          channel: '#general'
+          text: |
+            The build $BUILD_JOB_NAME with build ID $BUILD_ID for pipeline $BUILD_PIPELINE_NAME failed. Check it out at:
+            http://127.0.0.1:8080/builds/$BUILD_ID
+        put: tweet
+        params:
+          status: >
+            This is the first tweet with a picture (build ${BUILD_ID})
+            from my custom @concourseci resource!
